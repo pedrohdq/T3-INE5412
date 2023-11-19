@@ -1,32 +1,21 @@
-# Define as variaveis
 GXX=g++
-SRC_DIR = src
-INC_DIR = inc
-OBJ_DIR = obj
-BIN_DIR = bin
-GXXFLAGS = -Wall -Wextra -Werror -Wstrict-aliasing -I$(INC_DIR) -g -std=c++11 -ggdb3
-EXECUTABLE = $(BIN_DIR)/main
 
-# Alvo padrao
-all: $(BIN_DIR) $(OBJ_DIR) $(EXECUTABLE)
+simplefs: shell.o fs.o disk.o
+	$(GXX) shell.o fs.o disk.o -o simplefs
 
-# Cria os diretorios obj/ e bin/
-$(BIN_DIR):
-	mkdir -p $(BIN_DIR)
+shell.o: shell.cc
+	$(GXX) -Wall shell.cc -c -o shell.o -g
 
-$(OBJ_DIR):
-	mkdir -p $(OBJ_DIR)
+fs.o: fs.cc fs.h
+	$(GXX) -Wall fs.cc -c -o fs.o -g
 
-# Compila o executável
-$(EXECUTABLE): $(OBJECTS)
-	$(GXX) $(GXXFLAGS) $^ -o $@
+disk.o: disk.cc disk.h
+	$(GXX) -Wall disk.cc -c -o disk.o -g
 
-# Compila os objetos
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
-	$(GXX) $(GXXFLAGS) -c $< -o $@
+all: simplefs
 
-# Limpa objetos e executável
+test:
+	./simplefs image.5 5
+
 clean:
-	rm -rf $(OBJ_DIR) $(BIN_DIR)
-
-.PHONY: all clean
+	rm simplefs disk.o fs.o shell.o

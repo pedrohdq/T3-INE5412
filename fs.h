@@ -54,6 +54,7 @@ public:
 
 private:
     Disk *disk;
+    int bitmap[];
 };
 
 #endif
