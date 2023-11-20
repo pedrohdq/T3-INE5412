@@ -126,13 +126,23 @@ int INE5412_FS::fs_delete(int inumber)
 {
     auto *inode = new fs_inode;
     if (is_disk_mounted && inode_load(inumber, inode)) {
-        // TODO: liberar blocos de dados
         inode->isvalid = 0;
         inode->size = 0;
         for (int &direct: inode->direct) {
-            direct = 0;
+            if (direct) {
+                bitmap[direct] = 0;
+                direct = 0;
+            }
         }
-        inode->indirect = 0;
+        if (inode->indirect) {
+            bitmap[inode->indirect] = 0;
+            union fs_block pointer_block;
+            disk->read(inode->indirect, pointer_block.data);
+            for (int pointer : pointer_block.pointers) {
+                bitmap[pointer] = 0;
+            }
+            inode->indirect = 0;
+        }
         inode_save(inumber, inode);
         return 1;
     }
@@ -150,11 +160,19 @@ int INE5412_FS::fs_getsize(int inumber)
 
 int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 {
+    auto *inode = new fs_inode;
+    if (is_disk_mounted && inode_load(inumber, inode)) {
+
+    }
 	return 0;
 }
 
 int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 {
+    auto *inode = new fs_inode;
+    if (is_disk_mounted && inode_load(inumber, inode)) {
+
+    }
 	return 0;
 }
 
