@@ -7,11 +7,6 @@ Trabalho 3 para disciplina de Sistemas Operacionais I - INE5412
 ## Compilação
     make
 
-## Execução
-    O binário se econtra na pasta `bin/`.
-    O programa espera como primeiro argumento o arquivo de entrada.
-    Existem 2 arquivos de teste na pasta `src/` (`entrada.txt` e `entrada1.txt`)
-
 ## Limpa arquivos gerados pela compilação
     make clean
 
@@ -21,4 +16,4 @@ Trabalho 3 para disciplina de Sistemas Operacionais I - INE5412
          --track-origins=yes \
          --verbose \
          --log-file=valgrind-out.txt \
-         ./bin/main
+         ./simplefs
