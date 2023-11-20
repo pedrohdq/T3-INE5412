@@ -46,7 +46,7 @@ void INE5412_FS::fs_debug()
         disk->read(i + 1, block.data);
         for (int j = 0; j < INODES_PER_BLOCK; j++) {
             if (block.inode[j].isvalid) {
-                cout << "inode " << (i * INODES_PER_BLOCK) + j << ":\n";
+                cout << "inode " << (i * INODES_PER_BLOCK) + j + 1 << ":\n";
                 cout << "    size: " << block.inode[j].size << " bytes\n";
                 cout << "    direct blocks:";
                 for (int direct : block.inode[j].direct) {
@@ -94,17 +94,58 @@ int INE5412_FS::fs_mount()
 
 int INE5412_FS::fs_create()
 {
+    if (is_disk_mounted) {
+        union fs_block block;
+
+        disk->read(0, block.data);
+
+        for (int i = 0; i <= block.super.ninodeblocks; i++) {
+            union fs_block inode_block;
+
+            disk->read(i + 1, inode_block.data);
+            for (int j = 0; j < INODES_PER_BLOCK; j++) {
+                fs_inode &inode = inode_block.inode[j];
+                if (!inode.isvalid) {
+                    inode.isvalid = 1;
+                    inode.size = 0;
+                    for (int &direct: inode.direct) {
+                        direct = 0;
+                    }
+                    inode.indirect = 0;
+                    int inumber = (i * INODES_PER_BLOCK) + j + 1;
+                    inode_save(inumber, &inode);
+                    return inumber;
+                }
+            }
+        }
+    }
 	return 0;
 }
 
 int INE5412_FS::fs_delete(int inumber)
 {
+    auto *inode = new fs_inode;
+    if (is_disk_mounted && inode_load(inumber, inode)) {
+        // TODO: liberar blocos de dados
+        inode->isvalid = 0;
+        inode->size = 0;
+        for (int &direct: inode->direct) {
+            direct = 0;
+        }
+        inode->indirect = 0;
+        inode_save(inumber, inode);
+        return 1;
+    }
 	return 0;
 }
 
 int INE5412_FS::fs_getsize(int inumber)
 {
-	return -1;
+    auto *inode = new fs_inode;
+    if (is_disk_mounted && inode_load(inumber, inode)) {
+        return inode->size;
+    }
+    return -1;
 }
 
 int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
@@ -115,4 +156,43 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 {
 	return 0;
+}
+
+int INE5412_FS::inode_load(int inumber, INE5412_FS::fs_inode *inode) {
+    union fs_block block;
+
+    disk->read(0, block.data);
+
+    for (int i = 0; i <= block.super.ninodeblocks; i++) {
+        union fs_block inode_block;
+
+        disk->read(i + 1, inode_block.data);
+        for (int j = 0; j < INODES_PER_BLOCK; j++) {
+            fs_inode &tmp = inode_block.inode[j];
+            if (tmp.isvalid && ((i * INODES_PER_BLOCK) + j + 1 == inumber)) {
+                *inode = tmp;
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+void INE5412_FS::inode_save(int inumber, INE5412_FS::fs_inode *inode) {
+    union fs_block block;
+
+    disk->read(0, block.data);
+
+    for (int i = 0; i <= block.super.ninodeblocks; i++) {
+        union fs_block inode_block;
+
+        disk->read(i + 1, inode_block.data);
+        for (int j = 0; j < INODES_PER_BLOCK; j++) {
+            if ((i * INODES_PER_BLOCK) + j + 1 == inumber) {
+                inode_block.inode[j] = *inode;
+                break;
+            }
+        }
+        disk->write(i + 1, inode_block.data);
+    }
 }

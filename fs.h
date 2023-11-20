@@ -56,6 +56,9 @@ private:
     Disk *disk;
     int *bitmap = nullptr;
     bool is_disk_mounted = false;
+
+    int inode_load( int inumber, class fs_inode *inode);
+    void inode_save( int inumber, class fs_inode *inode);
 };
 
 #endif
