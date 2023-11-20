@@ -161,10 +161,50 @@ int INE5412_FS::fs_getsize(int inumber)
 int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 {
     auto *inode = new fs_inode;
+    int bytes_read = 0;
     if (is_disk_mounted && inode_load(inumber, inode)) {
-
+        int block_offset = offset / Disk::DISK_BLOCK_SIZE;
+        int offset_in_block = offset % Disk::DISK_BLOCK_SIZE;
+        while (bytes_read != length) {
+            if (block_offset < POINTERS_PER_INODE) {
+                if (inode->direct[block_offset]) {
+                    union fs_block block;
+                    disk->read(inode->direct[block_offset], block.data);
+                    int bytes_to_read = min(length - bytes_read, Disk::DISK_BLOCK_SIZE - offset_in_block);
+                    for (int i = 0; i < bytes_to_read; i++) {
+                        data[bytes_read + i] = block.data[offset_in_block + i];
+                    }
+                    bytes_read += bytes_to_read;
+                    block_offset++;
+                    offset_in_block = 0;
+                } else {
+                    break;
+                }
+            } else {
+                if (inode->indirect) {
+                    union fs_block pointer_block;
+                    disk->read(inode->indirect, pointer_block.data);
+                    int pointer_offset = block_offset - POINTERS_PER_INODE;
+                    if (pointer_block.pointers[pointer_offset]) {
+                        union fs_block block;
+                        disk->read(pointer_block.pointers[pointer_offset], block.data);
+                        int bytes_to_read = min(length - bytes_read, Disk::DISK_BLOCK_SIZE - offset_in_block);
+                        for (int i = 0; i < bytes_to_read; i++) {
+                            data[bytes_read + i] = block.data[offset_in_block + i];
+                        }
+                        bytes_read += bytes_to_read;
+                        block_offset++;
+                        offset_in_block = 0;
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
     }
-	return 0;
+	return bytes_read;
 }
 
 int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
