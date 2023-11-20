@@ -2,7 +2,32 @@
 
 int INE5412_FS::fs_format()
 {
-	return 0;
+    // uma tentativa de formatar um disco que já foi montado não deve fazer
+    // nada e retornar falha
+    if (!is_disk_mounted) {
+        union fs_block init_superblock;
+
+        init_superblock.super.magic = FS_MAGIC;
+        init_superblock.super.nblocks = disk->size();
+        // reserva 10% dos blocos para inodos
+        init_superblock.super.ninodeblocks = disk->size() / 10;
+        init_superblock.super.ninodes = init_superblock.super.ninodeblocks * INODES_PER_BLOCK;
+
+        // escreve o superbloco
+        disk->write(0, init_superblock.data);
+
+        // libera a tabela de inodos
+        union fs_block empty_block;
+        for (auto & inode : empty_block.inode) {
+            inode.isvalid = 0;
+        }
+        for (int i = 0; i < init_superblock.super.ninodeblocks; i++) {
+            disk->write(i + 1, empty_block.data);
+        }
+
+        return 1;
+    }
+    return 0;
 }
 
 void INE5412_FS::fs_debug()
@@ -48,7 +73,23 @@ void INE5412_FS::fs_debug()
 
 int INE5412_FS::fs_mount()
 {
-	return 0;
+    union fs_block block;
+
+    disk->read(0, block.data);
+
+    if (!is_disk_mounted && block.super.magic == FS_MAGIC) {
+        this->bitmap = new int[block.super.nblocks];
+        is_disk_mounted = true;
+
+        // ocupa os blocos do superbloco e da tabela de inodos
+        bitmap[0] = 1;
+        for (int i = 0; i <= block.super.ninodeblocks; i++) {
+            bitmap[i + 1] = 1;
+        }
+        return 1;
+    }
+    return 0;
+
 }
 
 int INE5412_FS::fs_create()
