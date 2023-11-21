@@ -42,24 +42,26 @@ void INE5412_FS::fs_debug()
 	cout << "    " << block.super.ninodeblocks << " inode blocks\n";
 	cout << "    " << block.super.ninodes << " inodes\n";
 
-    for (int i = 0; i <= block.super.ninodeblocks; i++) {
-        disk->read(i + 1, block.data);
+    union fs_block inode_block;
+    for (int i = 0; i < block.super.ninodeblocks; i++) {
+        disk->read(i + 1, inode_block.data);
         for (int j = 0; j < INODES_PER_BLOCK; j++) {
-            if (block.inode[j].isvalid) {
+            if (inode_block.inode[j].isvalid) {
                 cout << "inode " << (i * INODES_PER_BLOCK) + j + 1 << ":\n";
-                cout << "    size: " << block.inode[j].size << " bytes\n";
+                cout << "    size: " << inode_block.inode[j].size << " bytes\n";
                 cout << "    direct blocks:";
-                for (int direct : block.inode[j].direct) {
+                for (int direct : inode_block.inode[j].direct) {
                     if (direct) {
                         cout << " " << direct;
                     }
                 }
                 cout << "\n";
-                if (block.inode[j].indirect) {
-                    cout << "    indirect block: " << block.inode[j].indirect << "\n";
-                    disk->read(block.inode[j].indirect, block.data);
+                union fs_block pointer_block;
+                if (inode_block.inode[j].indirect) {
+                    cout << "    indirect block: " << inode_block.inode[j].indirect << "\n";
+                    disk->read(inode_block.inode[j].indirect, pointer_block.data);
                     cout << "    indirect data blocks:";
-                    for (int pointer : block.pointers) {
+                    for (int pointer : pointer_block.pointers) {
                         if (pointer) {
                             cout << " " << pointer;
                         }
