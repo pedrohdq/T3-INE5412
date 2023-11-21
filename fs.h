@@ -58,7 +58,8 @@ private:
     bool is_disk_mounted = false;
 
     int allocate_block();
-    void sanitaze_block(int blocknum);
+    void clear_block(int blocknum);
+    void update_inode_size(fs_inode *inode);
     int inode_load( int inumber, class fs_inode *inode);
     void inode_save( int inumber, class fs_inode *inode);
 };

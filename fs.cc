@@ -88,6 +88,31 @@ int INE5412_FS::fs_mount()
         for (int i = 0; i < block.super.ninodeblocks; i++) {
             bitmap[i + 1] = 1;
         }
+        // ocupa os blocos de dados que já estão em uso pelos inodos
+        for (int i = 0; i < block.super.ninodeblocks; i++) {
+            union fs_block inode_block;
+
+            disk->read(i + 1, inode_block.data);
+            for (int j = 0; j < INODES_PER_BLOCK; j++) {
+                if (inode_block.inode[j].isvalid) {
+                    for (int direct : inode_block.inode[j].direct) {
+                        if (direct) {
+                            bitmap[direct] = 1;
+                        }
+                    }
+                    if (inode_block.inode[j].indirect) {
+                        bitmap[inode_block.inode[j].indirect] = 1;
+                        union fs_block pointer_block;
+                        disk->read(inode_block.inode[j].indirect, pointer_block.data);
+                        for (int pointer : pointer_block.pointers) {
+                            if (pointer) {
+                                bitmap[pointer] = 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
         return 1;
     }
     return 0;
@@ -236,9 +261,9 @@ int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
                 }
                 disk->write(inode->direct[block_offset], block.data);
                 bytes_written += bytes_to_write;
-                inode->size += bytes_to_write;
                 block_offset++;
                 offset_in_block = 0;
+                update_inode_size(inode);
                 inode_save(inumber, inode);
             } else {
                 // inicializa um bloco de pointers para referencia indireta
@@ -271,9 +296,9 @@ int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
                 }
                 disk->write(pointer_block.pointers[pointer_offset], block.data);
                 bytes_written += bytes_to_write;
-                inode->size += bytes_to_write;
                 block_offset++;
                 offset_in_block = 0;
+                update_inode_size(inode);
                 inode_save(inumber, inode);
             }
         }
@@ -329,19 +354,52 @@ int INE5412_FS::allocate_block() {
         if (!bitmap[i]) {
             bitmap[i] = 1;
             block_number = i;
-            sanitaze_block(block_number);
+            clear_block(block_number);
             break;
         }
     }
     return block_number;
 }
 
-void INE5412_FS::sanitaze_block(int blocknum) {
+void INE5412_FS::clear_block(int blocknum) {
     union fs_block block;
 
     for (char &byte : block.data) {
         byte = 0;
     }
     disk->write(blocknum, block.data);
+}
 
+void INE5412_FS::update_inode_size(INE5412_FS::fs_inode *inode) {
+    int size = 0;
+    for (int direct : inode->direct) {
+        if (direct) {
+            fs_block block;
+
+            disk->read(direct, block.data);
+            for (char byte : block.data) {
+                if (byte) {
+                    size++;
+                }
+            }
+        }
+    }
+
+    if (inode->indirect) {
+        fs_block pointer_block;
+        disk->read(inode->indirect, pointer_block.data);
+        for (int pointer : pointer_block.pointers) {
+            if (pointer) {
+                fs_block block;
+
+                disk->read(pointer, block.data);
+                for (char byte : block.data) {
+                    if (byte) {
+                        size++;
+                    }
+                }
+            }
+        }
+    }
+    inode->size = size;
 }
