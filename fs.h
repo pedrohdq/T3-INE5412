@@ -39,7 +39,14 @@ public:
 
     INE5412_FS(Disk *d) {
         disk = d;
-    } 
+        bitmap = nullptr;
+    }
+
+    ~INE5412_FS() {
+        if (bitmap != nullptr) {
+            delete[] bitmap;
+        }
+    }
 
     void fs_debug();
     int  fs_format();
@@ -54,7 +61,7 @@ public:
 
 private:
     Disk *disk;
-    int *bitmap = nullptr;
+    int *bitmap;
     bool is_disk_mounted = false;
 
     int allocate_block();

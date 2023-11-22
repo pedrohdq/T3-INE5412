@@ -7,6 +7,7 @@ int INE5412_FS::fs_format()
     if (!is_disk_mounted) {
         union fs_block init_superblock;
 
+        disk->read(0, init_superblock.data);
         init_superblock.super.magic = FS_MAGIC;
         init_superblock.super.nblocks = disk->size();
         // reserva 10% dos blocos para inodos
@@ -17,8 +18,8 @@ int INE5412_FS::fs_format()
         disk->write(0, init_superblock.data);
 
         // libera a tabela de inodos
-        union fs_block empty_block;
-        for (auto & inode : empty_block.inode) {
+        union fs_block empty_block = {};
+        for (auto &inode : empty_block.inode) {
             inode.isvalid = 0;
         }
         for (int i = 0; i < init_superblock.super.ninodeblocks; i++) {
@@ -81,6 +82,7 @@ int INE5412_FS::fs_mount()
 
     if (!is_disk_mounted && block.super.magic == FS_MAGIC) {
         this->bitmap = new int[block.super.nblocks];
+        std::fill(bitmap, bitmap + block.super.nblocks, 0);
         is_disk_mounted = true;
 
         // ocupa os blocos do superbloco e da tabela de inodos
@@ -187,16 +189,16 @@ int INE5412_FS::fs_getsize(int inumber)
 
 int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 {
-    auto *inode = new fs_inode;
+    fs_inode inode;
     int bytes_read = 0;
-    if (is_disk_mounted && inode_load(inumber, inode)) {
+    if (is_disk_mounted && inode_load(inumber, &inode)) {
         int block_offset = offset / Disk::DISK_BLOCK_SIZE;
         int offset_in_block = offset % Disk::DISK_BLOCK_SIZE;
         while (bytes_read != length) {
             if (block_offset < POINTERS_PER_INODE) {
-                if (inode->direct[block_offset]) {
+                if (inode.direct[block_offset]) {
                     union fs_block block_to_be_read;
-                    disk->read(inode->direct[block_offset], block_to_be_read.data);
+                    disk->read(inode.direct[block_offset], block_to_be_read.data);
                     int bytes_to_read = min(length - bytes_read, Disk::DISK_BLOCK_SIZE - offset_in_block);
                     for (int i = 0; i < bytes_to_read; i++) {
                         data[bytes_read + i] = block_to_be_read.data[offset_in_block + i];
@@ -208,9 +210,9 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
                     break;
                 }
             } else {
-                if (inode->indirect) {
+                if (inode.indirect) {
                     union fs_block pointer_block;
-                    disk->read(inode->indirect, pointer_block.data);
+                    disk->read(inode.indirect, pointer_block.data);
                     int pointer_offset = block_offset - POINTERS_PER_INODE;
                     if (pointer_block.pointers[pointer_offset]) {
                         union fs_block block_to_be_read;
@@ -236,49 +238,49 @@ int INE5412_FS::fs_read(int inumber, char *data, int length, int offset)
 
 int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
 {
-    auto *inode = new fs_inode;
+    fs_inode inode;
     int bytes_written = 0;
-    if (is_disk_mounted && inode_load(inumber, inode)) {
+    if (is_disk_mounted && inode_load(inumber, &inode)) {
         int block_offset = offset / Disk::DISK_BLOCK_SIZE;
         int offset_in_block = offset % Disk::DISK_BLOCK_SIZE;
         while (bytes_written != length) {
             if (block_offset < POINTERS_PER_INODE) {
                 // inicializa um bloco de dados para referencia direta
                 // se ainda não existir
-                if (!inode->direct[block_offset]) {
+                if (!inode.direct[block_offset]) {
                     int block_number = allocate_block();
                     if (block_number == -1) {
                         break;
                     }
-                    inode->direct[block_offset] = block_number;
+                    inode.direct[block_offset] = block_number;
                 }
 
                 union fs_block block;
-                disk->read(inode->direct[block_offset], block.data);
+                disk->read(inode.direct[block_offset], block.data);
                 int bytes_to_write = min(length - bytes_written, Disk::DISK_BLOCK_SIZE - offset_in_block);
                 for (int i = 0; i < bytes_to_write; i++) {
                     block.data[offset_in_block + i] = data[bytes_written + i];
                 }
-                disk->write(inode->direct[block_offset], block.data);
+                disk->write(inode.direct[block_offset], block.data);
                 bytes_written += bytes_to_write;
                 block_offset++;
                 offset_in_block = 0;
-                update_inode_size(inode);
-                inode_save(inumber, inode);
+                update_inode_size(&inode);
+                inode_save(inumber, &inode);
             } else {
                 // inicializa um bloco de pointers para referencia indireta
                 // se ainda não existir
-                if (!inode->indirect) {
+                if (!inode.indirect) {
                     int block_number = allocate_block();
                     if (block_number == -1) {
                         break;
                     }
-                    inode->indirect = block_number;
+                    inode.indirect = block_number;
                 }
 
                 // inicializa um bloco de dados para o pointer se ainda não existir
                 union fs_block pointer_block;
-                disk->read(inode->indirect, pointer_block.data);
+                disk->read(inode.indirect, pointer_block.data);
                 int pointer_offset = block_offset - POINTERS_PER_INODE;
                 if (!pointer_block.pointers[pointer_offset]) {
                     int block_number = allocate_block();
@@ -298,8 +300,8 @@ int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
                 bytes_written += bytes_to_write;
                 block_offset++;
                 offset_in_block = 0;
-                update_inode_size(inode);
-                inode_save(inumber, inode);
+                update_inode_size(&inode);
+                inode_save(inumber, &inode);
             }
         }
     }
@@ -364,9 +366,8 @@ int INE5412_FS::allocate_block() {
 void INE5412_FS::clear_block(int blocknum) {
     union fs_block block;
 
-    for (char &byte : block.data) {
-        byte = 0;
-    }
+    std::fill(block.data, block.data + Disk::DISK_BLOCK_SIZE, 0);
+
     disk->write(blocknum, block.data);
 }
 
