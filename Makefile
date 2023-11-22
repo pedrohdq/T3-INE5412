@@ -14,8 +14,5 @@ disk.o: disk.cc disk.h
 
 all: simplefs
 
-test:
-	./simplefs image.5 5
-
 clean:
 	rm simplefs disk.o fs.o shell.o

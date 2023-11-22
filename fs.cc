@@ -153,26 +153,28 @@ int INE5412_FS::fs_create()
 
 int INE5412_FS::fs_delete(int inumber)
 {
-    auto *inode = new fs_inode;
-    if (is_disk_mounted && inode_load(inumber, inode)) {
-        inode->isvalid = 0;
-        inode->size = 0;
-        for (int &direct: inode->direct) {
+    fs_inode inode;
+    if (is_disk_mounted && inode_load(inumber, &inode)) {
+        inode.isvalid = 0;
+        inode.size = 0;
+        for (int &direct: inode.direct) {
             if (direct) {
                 bitmap[direct] = 0;
                 direct = 0;
             }
         }
-        if (inode->indirect) {
-            bitmap[inode->indirect] = 0;
+        if (inode.indirect) {
+            bitmap[inode.indirect] = 0;
             union fs_block pointer_block;
-            disk->read(inode->indirect, pointer_block.data);
+            disk->read(inode.indirect, pointer_block.data);
             for (int pointer : pointer_block.pointers) {
-                bitmap[pointer] = 0;
+                if (pointer) {
+                    bitmap[pointer] = 0;
+                }
             }
-            inode->indirect = 0;
+            inode.indirect = 0;
         }
-        inode_save(inumber, inode);
+        inode_save(inumber, &inode);
         return 1;
     }
 	return 0;
@@ -288,6 +290,7 @@ int INE5412_FS::fs_write(int inumber, const char *data, int length, int offset)
                         break;
                     }
                     pointer_block.pointers[pointer_offset] = block_number;
+                    disk->write(inode.indirect, pointer_block.data);
                 }
 
                 union fs_block block;
